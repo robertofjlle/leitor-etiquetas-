@@ -168,9 +168,10 @@
       </div>
       <div id="reader" style="display:none"></div>
       <div class="reticle" id="reticle" style="display:none"></div>
-      <div class="hint" id="scanHint" style="display:none">Procurando código…</div>
+      <div class="hint" id="scanHint" style="display:none">Aproxime bem e mantenha o código dentro do quadro, com boa luz</div>
     </div>
     <button class="primary" id="btnToggleScan">Iniciar câmera</button>
+    <button class="secondary" id="btnTorch" style="margin-top:10px; display:none">🔦 Ligar lanterna</button>
     <button class="secondary" id="btnManual" style="margin-top:10px">Adicionar sem escanear</button>
 
     <div class="card" id="camError" style="display:none; margin-top:12px; border-color:var(--danger)">
@@ -355,12 +356,13 @@ async function startScanning(){
     if(!html5Qrcode) html5Qrcode = new Html5Qrcode("reader", { formatsToSupport: supportedFormats(), verbose:false });
     await html5Qrcode.start(
       { facingMode: "environment" },
-      { fps: 10, qrbox: { width: 260, height: 170 }, aspectRatio: 1.0 },
+      { fps: 12, qrbox: { width: 300, height: 300 }, disableFlip: false },
       (decodedText) => onCodeDetected(decodedText),
       () => { /* ignora erros de frame sem código */ }
     );
     detecting = true;
     btnToggleScan.textContent = 'Parar câmera';
+    checkTorchSupport();
   }catch(e){
     const name = (e && e.name) || 'Erro';
     const msg = (e && e.message) || String(e);
@@ -384,11 +386,37 @@ function stopScanning(){
   if(html5Qrcode && detecting){
     html5Qrcode.stop().then(()=>html5Qrcode.clear()).catch(()=>{});
   }
-  detecting = false;
+  detecting = false; torchOn = false;
+  document.getElementById('btnTorch').style.display='none';
+  document.getElementById('btnTorch').textContent = '🔦 Ligar lanterna';
   readerDiv.style.display='none'; scanIdle.style.display='flex';
   reticle.style.display='none'; scanHint.style.display='none';
   btnToggleScan.textContent = 'Iniciar câmera';
 }
+
+let torchOn = false;
+function checkTorchSupport(){
+  try{
+    const track = html5Qrcode.getRunningTrackCapabilities ? null : null;
+    const videoEl = readerDiv.querySelector('video');
+    const stream = videoEl && videoEl.srcObject;
+    const vtrack = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+    const caps = vtrack && vtrack.getCapabilities ? vtrack.getCapabilities() : {};
+    if(caps && caps.torch){
+      document.getElementById('btnTorch').style.display='block';
+    }
+  }catch(e){ /* torch indisponível neste aparelho/navegador */ }
+}
+
+document.getElementById('btnTorch').addEventListener('click', async ()=>{
+  try{
+    torchOn = !torchOn;
+    await html5Qrcode.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+    document.getElementById('btnTorch').textContent = torchOn ? '🔦 Desligar lanterna' : '🔦 Ligar lanterna';
+  }catch(e){
+    toast('Lanterna não suportada neste aparelho.');
+  }
+});
 
 let lastCode = '', lastCodeTime = 0;
 function onCodeDetected(raw){
